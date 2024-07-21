@@ -255,7 +255,7 @@ class Node:
         """
         train_module = importlib.import_module(train_configs["training_package"])
         train_class = getattr(train_module, train_configs["training_class"])
-
+        print(train_class)
         loss_package = importlib.import_module(train_configs["loss_package"])
         if "loss_class" in train_configs.keys():
             loss_class = getattr(loss_package, train_configs["loss_class"])

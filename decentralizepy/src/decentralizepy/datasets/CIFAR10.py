@@ -1,18 +1,20 @@
 import logging
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
+from sklearn.model_selection import StratifiedShuffleSplit
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset, Subset
 
 from decentralizepy.datasets.Dataset import Dataset
 from decentralizepy.datasets.Partitioner import (
     DataPartitioner,
     DirichletDataPartitioner,
     KShardDataPartitioner,
-    SimpleDataPartitioner,
+    SimpleDataPartitioner, DirichletClustersDataPartitioner,
 )
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model
@@ -35,6 +37,23 @@ class CIFAR10(Dataset):
         trainset = torchvision.datasets.CIFAR10(
             root=self.train_dir, train=True, download=True, transform=self.transform
         )
+        testset = torchvision.datasets.CIFAR10(
+            root=self.test_dir, train=False, download=True, transform=self.transform
+        )
+
+        # Extract data and targets from the trainset and testset
+        train_data = np.array([trainset[i][0].numpy() for i in range(len(trainset))])
+        train_targets = np.array([trainset[i][1] for i in range(len(trainset))])
+        test_data = np.array([testset[i][0].numpy() for i in range(len(testset))])
+        test_targets = np.array([testset[i][1] for i in range(len(testset))])
+
+        # Combine train and test data
+        combined_data = np.concatenate((train_data, test_data), axis=0)
+        combined_targets = np.concatenate((train_targets, test_targets), axis=0)
+
+        # Create a combined dataset
+        combined_dataset = list(zip(combined_data, combined_targets))
+
 
         if self.__validating__ and self.validation_source == "Train":
             logging.info("Extracting the validation set from the train set.")
@@ -44,7 +63,10 @@ class CIFAR10(Dataset):
                 torch.Generator().manual_seed(self.random_seed),
             )
 
-        self.c_len = len(trainset)
+        if self.partition_niid == "dirichlet" or self.partition_niid == "dirichlet_clusters":
+            self.c_len = len(testset) + len(trainset)
+        else:
+            self.c_len = len(trainset)
 
         if self.sizes == None:  # Equal distribution of data among processes
             e = self.c_len // self.num_partitions
@@ -63,13 +85,111 @@ class CIFAR10(Dataset):
                 trainset, sizes=self.sizes, seed=self.random_seed
             )
         elif self.partition_niid == "dirichlet":
-            self.training_partitions = DirichletDataPartitioner(
-                trainset,
+
+            # Partition the combined dataset
+            self.combined_partitions = DirichletDataPartitioner(
+                combined_dataset,
                 sizes=self.sizes,
                 seed=self.random_seed,
                 alpha=self.alpha,
                 num_classes=self.num_classes,
             )
+            local_combined_partition = self.combined_partitions.use(self.dataset_id)
+            local_data = np.array([local_combined_partition[i][0] for i in range(len(local_combined_partition))])
+            local_targets = np.array([local_combined_partition[i][1] for i in range(len(local_combined_partition))])
+            unique, counts = np.unique(local_targets, return_counts=True)
+
+            if np.any(counts < 2):
+                logging.warning("Not enough samples to perform stratified split. Falling back to random split.")
+                total_size = len(local_targets)
+                test_size = int(total_size * 0.14)
+                indices = np.arange(total_size)
+                np.random.seed(self.random_seed)
+                np.random.shuffle(indices)
+                test_indices = indices[:test_size]
+                train_indices = indices[test_size:]
+            else:
+                # Use StratifiedShuffleSplit to split the local data into train and test indices
+                sss = StratifiedShuffleSplit(n_splits=1, test_size=0.14, random_state=self.random_seed)
+                train_indices, test_indices = next(sss.split(local_data, local_targets))
+
+            # Split the local combined partition into train and test sets
+            #local_train_indices = local_combined_partition[train_indices]
+            #local_test_indices = local_combined_partition[test_indices]
+
+            self.trainset = Subset(local_combined_partition, train_indices)
+            self.testset = Subset(local_combined_partition, test_indices)
+            self.c_len = len(train_indices)
+
+            trainset_labels = np.array([self.trainset[i][1] for i in range(len(self.trainset))])
+            unique_train, counts_train = np.unique(trainset_labels, return_counts=True)
+
+            testset_labels = np.array([self.testset[i][1] for i in range(len(self.testset))])
+            unique, count = np.unique(testset_labels, return_counts=True)
+
+            unique_train = ', '.join(map(str, unique_train))
+            counts_train = ', '.join(map(str, counts_train))
+
+            unique = ', '.join(map(str, unique))
+            count = ', '.join(map(str, count))
+
+            print("the unique train are " + unique_train + " for test " + unique + " and count for train is " + counts_train + " for test " + count)
+
+        elif self.partition_niid == "dirichlet_clusters":
+
+            # Partition the combined dataset
+            self.combined_partitions = DirichletClustersDataPartitioner(
+                combined_dataset,
+                sizes=self.sizes,
+                seed=self.random_seed,
+                alpha=self.alpha,
+                num_classes=self.num_classes,
+            )
+
+
+            local_combined_partition = self.combined_partitions.use(self.dataset_id)
+            local_data = np.array([local_combined_partition[i][0] for i in range(len(local_combined_partition))])
+            local_targets = np.array([local_combined_partition[i][1] for i in range(len(local_combined_partition))])
+            unique, counts = np.unique(local_targets, return_counts=True)
+
+            if np.any(counts < 2):
+                logging.warning("Not enough samples to perform stratified split. Falling back to random split.")
+                total_size = len(local_targets)
+                test_size = int(total_size * 0.14)
+                indices = np.arange(total_size)
+                np.random.seed(self.random_seed)
+                np.random.shuffle(indices)
+                test_indices = indices[:test_size]
+                train_indices = indices[test_size:]
+            else:
+                # Use StratifiedShuffleSplit to split the local data into train and test indices
+                sss = StratifiedShuffleSplit(n_splits=1, test_size=0.14, random_state=self.random_seed)
+                train_indices, test_indices = next(sss.split(local_data, local_targets))
+
+            # Split the local combined partition into train and test sets
+            #local_train_indices = local_combined_partition[train_indices]
+            #local_test_indices = local_combined_partition[test_indices]
+
+            self.trainset = Subset(local_combined_partition, train_indices)
+            self.testset = Subset(local_combined_partition, test_indices)
+            self.c_len = len(train_indices)
+
+            trainset_labels = np.array([self.trainset[i][1] for i in range(len(self.trainset))])
+            unique_train, counts_train = np.unique(trainset_labels, return_counts=True)
+
+            testset_labels = np.array([self.testset[i][1] for i in range(len(self.testset))])
+            unique, count = np.unique(testset_labels, return_counts=True)
+
+            unique_train = ', '.join(map(str, unique_train))
+            counts_train = ', '.join(map(str, counts_train))
+
+            unique = ', '.join(map(str, unique))
+            count = ', '.join(map(str, count))
+
+            print("the unique train are " + unique_train + " for test " + unique + " and count for train is " + counts_train + " for test " + count)
+
+
+
         elif (
             self.partition_niid == "kshard" or str(self.partition_niid) == "True"
         ):  # Backward compatibility
@@ -90,7 +210,10 @@ class CIFAR10(Dataset):
             raise NotImplementedError(
                 "Partitioning method {} not implemented".format(self.partition_niid)
             )
-        self.trainset = self.training_partitions.use(self.dataset_id)
+
+        if self.partition_niid != "dirichlet" and self.partition_niid != "dirichlet_clusters":
+            self.trainset = self.training_partitions.use(self.dataset_id)
+
 
     def load_testset(self):
         """
@@ -99,9 +222,13 @@ class CIFAR10(Dataset):
         """
         logging.info("Loading testing set.")
 
-        self.testset = torchvision.datasets.CIFAR10(
-            root=self.test_dir, train=False, download=True, transform=self.transform
-        )
+        if self.partition_niid == "dirichlet":
+            print("loading testset")
+        else:
+            self.testset = torchvision.datasets.CIFAR10(
+                root=self.test_dir, train=False, download=True, transform=self.transform
+            )
+
 
         if self.__validating__ and self.validation_source == "Test":
             logging.info("Extracting the validation set from the test set.")
@@ -220,6 +347,12 @@ class CIFAR10(Dataset):
             If the training set was not initialized
 
         """
+        if self.partition_niid == "dirichlet" or self.partition_niid == "dirichlet_clusters":
+            return DataLoader(
+                    self.trainset,
+                    batch_size=batch_size,
+                    shuffle=shuffle,
+                )
         if self.__training__:
             if dataset_id is not None:
                 return DataLoader(
@@ -305,10 +438,8 @@ class CIFAR10(Dataset):
                     elems = elems.cuda()
                     labels = labels.cuda()
                 outputs = model(elems)
-                loss_val = loss(outputs, labels) * labels.size(0) + loss_val
-                outputs = outputs
-                labels = labels
-                count = labels.size(0) + count
+                loss_val += loss(outputs, labels).item() * labels.size(0)
+                count += labels.size(0)
                 _, predictions = torch.max(outputs, 1)
 
                 correct = predictions.eq(labels)
@@ -322,18 +453,18 @@ class CIFAR10(Dataset):
         overall_accuracy = (
             100 * class_correct.sum().float() / class_total.sum()
             if class_total.sum() != 0
-            else 100.0
+            else torch.tensor(100.0, device=self.device)
         )
-        loss_val = loss_val / count
 
-        # per_class_accuracy = 100 * class_correct.float() / class_total.where(class_total != 0, torch.tensor(1.0))
+        # Ensure count is not zero to avoid division by zero error
+        if count != 0:
+            loss_val = loss_val / count
+        else:
+            loss_val = 0.0
 
-        # for i in range(NUM_CLASSES):
-        #     logging.debug("Accuracy for class {} is: {:.1f} %".format(i, per_class_accuracy[i]))
-
-        logging.info("Overall test accuracy is: {:.1f} %".format(overall_accuracy))
-        print("Overall test accuracy is: {:.1f} %".format(overall_accuracy))
-        return overall_accuracy.item(), loss_val.item()
+        logging.info("Overall test accuracy is: {:.1f} %".format(overall_accuracy.item()))
+        print("Overall test accuracy is: {:.1f} %".format(overall_accuracy.item()))
+        return overall_accuracy.item(), loss_val
 
     def validate(self, model, loss):
         """

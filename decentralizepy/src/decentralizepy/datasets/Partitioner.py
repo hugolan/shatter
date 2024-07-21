@@ -57,7 +57,12 @@ class Partition(object):
             The data sample with the given `index` in the dataset
 
         """
-        return self.data[index]
+        try:
+            return self.data[index]
+        except:
+            print("index " + str(index) + "len data" + str(len(self.data)))
+            return self.data[index]
+
 
 
 class DataPartitioner(object):
@@ -193,7 +198,6 @@ class DirichletDataPartitioner(DataPartitioner):
     """
     Class to partition the dataset using Dirichlet Function
     Modified from https://gitlab.epfl.ch/sacs/collaborative-inference/-/blob/main/src/decentralizepy/datasets/Partitioner.py#L207
-
     """
 
     def __init__(self, data, sizes=[1.0], seed=1234, alpha=0.1, num_classes=10):
@@ -212,15 +216,15 @@ class DirichletDataPartitioner(DataPartitioner):
             Seed for generating a random subset
         alpha : float
             Degree of heterogeneity. Lower is more heterogeneous.
-
         """
 
         self.data = data
         self.seed = seed
         self.num_classes = num_classes
         self.alpha = alpha
+        targets = np.array([target for _, target in data])
         self.partitions, self.ratio = self.__getDirichletData__(
-            np.array(data.targets), len(sizes), seed, self.alpha, num_classes
+            targets, len(sizes), seed, self.alpha, num_classes
         )
 
     def __getDirichletData__(self, labelList, n_nets, seed, alpha, K):
@@ -239,7 +243,6 @@ class DirichletDataPartitioner(DataPartitioner):
             Degree of heterogeneity. Lower is more heterogeneous.
         K : int
             Number of classes
-
         """
 
         min_size = 0
@@ -285,5 +288,116 @@ class DirichletDataPartitioner(DataPartitioner):
             local_sizes.append(len(net_dataidx_map[i]))
         local_sizes = np.array(local_sizes)
         counts = local_sizes  # return counts insteads of ratios
-
         return idx_batch, counts
+
+class DirichletClustersDataPartitioner(DataPartitioner):
+    """
+    Class to partition the dataset using Dirichlet Function
+    Modified from https://gitlab.epfl.ch/sacs/collaborative-inference/-/blob/main/src/decentralizepy/datasets/Partitioner.py#L207
+    """
+
+    def __init__(self, data, sizes=[1.0], seed=1234, alpha=0.1, num_classes=10, clusters=4):
+        """
+        Constructor. Partitions the data according the parameters
+
+        Parameters
+        ----------
+        data : indexable
+            An indexable list of data items
+        sizes : list(float)
+            Not used for partitioning, but kept for compatibility
+        shards : int
+            Number of shards to allot to process
+        seed : int, optional
+            Seed for generating a random subset
+        alpha : float
+            Degree of heterogeneity. Lower is more heterogeneous.
+        """
+
+        self.data = data
+        self.seed = seed
+        self.num_classes = num_classes
+        self.alpha = alpha
+        self.partitions = [[] for _ in range(len(sizes))]
+        targets = np.array([target for _, target in data])
+        cluster_partitions, _ = self.__getDirichletData__(
+            targets, clusters, seed, self.alpha, num_classes
+        )
+        print(cluster_partitions)
+        cluster_size = len(sizes)/clusters
+        for cluster in range(clusters):
+            cluster_data = cluster_partitions[cluster]
+            cluster_targets = np.array([target for _, target in cluster_data])
+            partitions_individuals, _ = self.__getDirichletData__(
+                cluster_targets, cluster_size, seed, self.alpha, num_classes
+            )
+            print(partitions_individuals)
+            for i in range(cluster_size):
+                print()
+                self.partitions[i+cluster*cluster_size] = partitions_individuals[i]
+
+
+
+    def __getDirichletData__(self, labelList, n_nets, seed, alpha, K):
+        """
+        Function to partition the data using Dirichlet Function
+
+        Parameters
+        ----------
+        labelList : np.ndarray
+            Array of labels
+        n_nets : int
+            Number of clients
+        seed : int
+            Seed for generating a random subset
+        alpha : float
+            Degree of heterogeneity. Lower is more heterogeneous.
+        K : int
+            Number of classes
+        """
+
+        min_size = 0
+        N = len(labelList)
+        rng = np.random.default_rng(seed)
+
+        net_dataidx_map = {}
+        while min_size < K:
+            idx_batch = [[] for _ in range(n_nets)]
+            # for each class in the dataset
+            for k in range(K):
+                idx_k = np.where(labelList == k)[0]
+                rng.shuffle(idx_k)
+                proportions = rng.dirichlet(np.repeat(alpha, n_nets))
+                ## Balance
+                proportions = np.array(
+                    [
+                        p * (len(idx_j) < N / n_nets)
+                        for p, idx_j in zip(proportions, idx_batch)
+                    ]
+                )
+                proportions = proportions / proportions.sum()
+                proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+                idx_batch = [
+                    idx_j + idx.tolist()
+                    for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions))
+                ]
+                min_size = min([len(idx_j) for idx_j in idx_batch])
+
+        for j in range(n_nets):
+            rng.shuffle(idx_batch[j])
+            net_dataidx_map[j] = idx_batch[j]
+
+        net_cls_counts = {}
+
+        for net_i, dataidx in net_dataidx_map.items():
+            unq, unq_cnt = np.unique(labelList[dataidx], return_counts=True)
+            tmp = {unq[i]: unq_cnt[i] for i in range(len(unq))}
+            net_cls_counts[net_i] = tmp
+
+        local_sizes = []
+        for i in range(n_nets):
+            local_sizes.append(len(net_dataidx_map[i]))
+        local_sizes = np.array(local_sizes)
+        counts = local_sizes  # return counts insteads of ratios
+        return idx_batch, counts
+

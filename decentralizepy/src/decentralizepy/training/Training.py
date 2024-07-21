@@ -111,6 +111,37 @@ class Training:
         self.model = self.model.cpu()
         return loss
 
+    def eval_loss_all_models_skewscout(self, dataset, deque):
+        """
+        Evaluate the loss on the training set
+
+        Parameters
+        ----------
+        dataset : decentralizepy.datasets.Dataset
+            The training dataset. Should implement get_trainset(batch_size, shuffle)
+
+        """
+        trainset = dataset.get_trainset(self.batch_size, self.shuffle)
+        epoch_loss = 0.0
+        count = 0
+        if torch.cuda.is_available():
+            self.model = self.model.cuda()
+
+        self.model.eval()
+        with torch.no_grad():
+            for data, target in trainset:
+                if torch.cuda.is_available():
+                    data = data.cuda()
+                    target = target.cuda()
+                output = self.model(data)
+                loss_val = self.loss(output, target)
+                epoch_loss += loss_val * target.size(0)
+                count += target.size(0)
+        loss = (epoch_loss / count).item()
+        logging.info("Loss after iteration: {}".format(loss))
+        self.model = self.model.cpu()
+        return loss
+
     def trainstep(self, data, target):
         """
         One training step on a minibatch.
@@ -185,6 +216,7 @@ class Training:
             iter_loss = 0.0
             count = 0
             trainset = dataset.get_trainset(self.batch_size, self.shuffle)
+
             while count < self.rounds:
                 for data, target in trainset:
                     iter_loss += self.trainstep(data, target)

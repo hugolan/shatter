@@ -74,7 +74,6 @@ class TCP(Communication):
 
         """
         super().__init__(rank, machine_id, mapping, total_procs)
-
         with open(addresses_filepath) as addrs:
             self.ip_addrs = json.load(addrs)
 

@@ -16,6 +16,7 @@ from decentralizepy import utils
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.node.Node import Node
+from scipy.stats import entropy
 
 
 class Hugo_Local(Node):
@@ -28,6 +29,27 @@ class Hugo_Local(Node):
         """Compute softmax values for each sets of scores in x."""
         e_x = np.exp(x - np.max(x))
         return e_x / e_x.sum(axis=0)
+
+    def calculate_kl_distance(self, P, Q):
+        epsilon = 1e-8
+        min_positive = 1e-10
+
+        shift_value = np.abs(min(np.min(Q),np.min(P))) + epsilon
+        P = P + shift_value
+        Q = Q + shift_value
+
+        #clip
+        P = np.clip(P, min_positive, None)
+        Q = np.clip(Q, min_positive, None)
+
+
+        # Normalize to ensure they sum to 1
+        P = P / np.sum(P)
+        Q = Q / np.sum(Q)
+
+        # Calculate KL divergence using scipy.stats.entropy
+        distance = entropy(P, Q)
+        return distance
 
     def save_plot(self, l, label, title, xlabel, filename):
         """
@@ -56,15 +78,18 @@ class Hugo_Local(Node):
         plt.savefig(filename)
 
     def get_neighbors(self, node=None):
-        new_neigh = set()
-        while len(new_neigh) < self.degree:
-            index = random.choices(self.list_neighbours, weights=self.probability_matrix, k=1)[0]
-            if index != self.rank:
-                new_neigh.add(index)
-        return list(new_neigh)
-
+        #new_neigh = set()
+        #while len(new_neigh) < self.degree:
+        #    index = random.choices(self.list_neighbours, weights=self.probability_matrix, k=1)[0]
+        #    if index != self.rank:
+        #        new_neigh.add(index)
+        #return list(new_neigh)
+        l = list(np.random.choice(self.list_neighbours, size=self.degree, replace=False, p=self.probability_matrix))
+        l = [int(i) for i in l]
+        return l
     def get_neighbors_skewscount(self):
         return self.my_neighbors
+
 
     def update_stored_models(self, averaging_deque):
         #if self.rank == 0:
@@ -75,27 +100,51 @@ class Hugo_Local(Node):
     def update_probability_matrix(self, to_send):
         sum_dist = 0
         count = 0
+        scale_factor = 10  # Scaling factor to emphasize differences
+
         for i in range(len(self.stored_models)):
             if len(self.stored_models[i]) != 0 and i != self.rank:
                 count += 1
-                if self.distance_similarity == "closer":
-                    self.probability_matrix[i] = 1/np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
-                    sum_dist += 1/np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
+                if self.distance_similarity == "closer" and self.distance_nodes == 2:
+                    d = 1/np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
+                    self.probability_matrix[i] = d
+                    sum_dist += d
+                elif self.distance_similarity == "further" and self.distance_nodes == 2:
+                    d = np.linalg.norm(self.stored_models[i] - to_send['params'],ord=self.distance_nodes)
+                    if self.iteration > 50:
+                        d = np.exp(-scale_factor * d)
+                    self.probability_matrix[i] = d
+                    sum_dist += d
+
+                elif self.distance_similarity == "closer" and self.distance_nodes == "kl_distance":
+                    d = 1/self.calculate_kl_distance(self.stored_models[i], to_send['params'])
+                    if self.iteration > 40:
+                        d = np.exp(-scale_factor * d)
+                    self.probability_matrix[i] = d
+                    sum_dist += d
+                elif self.distance_similarity == "further" and self.distance_nodes == "kl_distance":
+                    d = self.calculate_kl_distance(self.stored_models[i], to_send['params'])
+                    self.probability_matrix[i] = d
+                    sum_dist += d
                 else:
-                    self.probability_matrix[i] = np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
-                    sum_dist += np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
+                    print("wrong_distance")
 
 
         for i in range(len(self.stored_models)):
             if len(self.stored_models[i]) == 0 and i != self.rank:
                 self.probability_matrix[i] = sum_dist/count
 
+        #if self.rank == 0:
+        #    print(self.probability_matrix)
 
-
+        #if self.iteration < 100:
         sum_weights = np.sum(self.probability_matrix)
         for i in range(len(self.probability_matrix)):
             self.probability_matrix[i] = self.probability_matrix[i]/sum_weights
-        #self.probability_matrix = list(self.softmax(self.probability_matrix))
+        #else:
+        #    self.probability_matrix = list(self.softmax(self.probability_matrix))
+        #if self.rank == 0:
+        #    print(self.probability_matrix)
         return
 
 
@@ -127,6 +176,7 @@ class Hugo_Local(Node):
         Start the decentralized learning
 
         """
+
         self.testset = self.dataset.get_testset()
         rounds_to_test = self.test_after
         rounds_to_train_evaluate = self.train_evaluate_after
@@ -134,7 +184,6 @@ class Hugo_Local(Node):
         change = 1
         self.rng = Random()
         self.rng.seed(self.dataset.random_seed + self.uid)
-
         self.connect_neighbors()
         logging.info("Connected to all neighbors")
 
@@ -219,12 +268,14 @@ class Hugo_Local(Node):
                 self.update_probability_matrix(to_send)
 
 
-
-
+            #if (iteration % self.alternate_rounds) == 0:
             if atleast_one:
                 self.sharing._averaging(averaging_deque)
             else:
                 self.sharing.communication_round += 1
+            #else:
+            #    self.sharing.communication_round += 1
+
 
             if self.reset_optimizer:
                 self.optimizer = self.optimizer_class(
@@ -468,6 +519,7 @@ class Hugo_Local(Node):
 
         self.distance_nodes = config["PARAMS"]["distance_nodes"]
         self.distance_similarity = config["PARAMS"]["distance_similarity"]
+        self.alternate_rounds = config["PARAMS"]["alternate_rounds"]
 
 
     def __init__(
