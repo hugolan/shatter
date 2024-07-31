@@ -99,8 +99,7 @@ class Hugo_Local(Node):
         return
     def update_probability_matrix(self, to_send):
         sum_dist = 0
-        count = 0
-        scale_factor = 10  # Scaling factor to emphasize differences
+        count  = 0
 
         for i in range(len(self.stored_models)):
             if len(self.stored_models[i]) != 0 and i != self.rank:
@@ -111,15 +110,18 @@ class Hugo_Local(Node):
                     sum_dist += d
                 elif self.distance_similarity == "further" and self.distance_nodes == 2:
                     d = np.linalg.norm(self.stored_models[i] - to_send['params'],ord=self.distance_nodes)
-                    if self.iteration > 50:
-                        d = np.exp(-scale_factor * d)
                     self.probability_matrix[i] = d
                     sum_dist += d
-
+                elif self.distance_similarity == "furtherexp" and self.distance_nodes == 2:
+                    d = np.linalg.norm(self.stored_models[i] - to_send['params'],ord=self.distance_nodes)
+                    if self.iteration > 50:
+                        d = np.exp(-self.weighting_factor * d)
+                    self.probability_matrix[i] = d
+                    sum_dist += d
                 elif self.distance_similarity == "closer" and self.distance_nodes == "kl_distance":
                     d = 1/self.calculate_kl_distance(self.stored_models[i], to_send['params'])
                     if self.iteration > 40:
-                        d = np.exp(-scale_factor * d)
+                        d = np.exp(-self.weighting_factor * d)
                     self.probability_matrix[i] = d
                     sum_dist += d
                 elif self.distance_similarity == "further" and self.distance_nodes == "kl_distance":
@@ -520,7 +522,7 @@ class Hugo_Local(Node):
         self.distance_nodes = config["PARAMS"]["distance_nodes"]
         self.distance_similarity = config["PARAMS"]["distance_similarity"]
         self.alternate_rounds = config["PARAMS"]["alternate_rounds"]
-
+        self.weighting_factor = config["PARAMS"]["weighting_factor"]
 
     def __init__(
         self,
