@@ -137,12 +137,14 @@ class CIFAR10(Dataset):
 
         elif self.partition_niid == "dirichlet_clusters":
 
+
             # Partition the combined dataset
             self.combined_partitions = DirichletClustersDataPartitioner(
                 combined_dataset,
                 sizes=self.sizes,
                 seed=self.random_seed,
-                alpha=self.alpha,
+                alpha_1=self.alpha_1,
+                alpha_2=self.alpha_2,
                 num_classes=self.num_classes,
             )
 
@@ -254,6 +256,8 @@ class CIFAR10(Dataset):
         shards=1,
         validation_source="",
         validation_size="",
+        alpha_1 = "",
+        alpha_2 = "",
         *args,
         **kwargs
     ):
@@ -313,7 +317,11 @@ class CIFAR10(Dataset):
         self.num_classes = NUM_CLASSES
 
         self.partition_niid = partition_niid
-        self.alpha = alpha
+        if self.partition_niid != "dirichlet_clusters":
+            self.alpha = alpha
+        else:
+            self.alpha_1 = alpha_1
+            self.alpha_2 = alpha_2
         self.shards = shards
         self.transform = transforms.Compose(
             [

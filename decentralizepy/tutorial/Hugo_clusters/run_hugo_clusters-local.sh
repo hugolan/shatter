@@ -22,4 +22,5 @@ echo procs per machine is $procs_per_machine
 log_dir=$run_path/$(date '+%Y-%m-%dT%H:%M')/machine$m # in the eval folder
 mkdir -p $log_dir
 
+echo "-ro 0 -tea $test_after -ld $log_dir -mid $m -ps $procs_per_machine -ms $machines -is $iterations -gf $run_path/$graph -ta $test_after -cf $run_path/$config_file -ll $log_level -wsd $log_dir"
 $env_python $eval_file -ro 0 -tea $test_after -ld $log_dir -mid $m -ps $procs_per_machine -ms $machines -is $iterations -gf $run_path/$graph -ta $test_after -cf $run_path/$config_file -ll $log_level -wsd $log_dir
