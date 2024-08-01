@@ -13,6 +13,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from decentralizepy import utils
+from decentralizepy.datasets.CIFAR10 import LeNet
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.node.Node import Node
@@ -95,7 +96,10 @@ class Hugo_Local(Node):
         #if self.rank == 0:
         #    print(averaging_deque)
         for rank, d in averaging_deque.items():
-            self.stored_models[rank] = averaging_deque[int(rank)][0]['params']
+            if self.distance_similarity == "DAC":
+                self.stored_models[rank] = averaging_deque[int(rank)][0]
+            else:
+                self.stored_models[rank] = averaging_deque[int(rank)][0]['params']
         return
     def update_probability_matrix(self, to_send):
         sum_dist = 0
@@ -118,6 +122,13 @@ class Hugo_Local(Node):
                         d = np.exp(-self.weighting_factor * d)
                     self.probability_matrix[i] = d
                     sum_dist += d
+                elif self.distance_similarity == "DAC":
+                    model = LeNet()
+                    params = self.sharing.deserialized_model(self.stored_models[i])
+                    model.load_state_dict(params)
+                    ta, tl = self.dataset.test(model, self.loss)
+                    self.probability_matrix[i] = 1/tl
+                    sum_dist += 1/tl
                 elif self.distance_similarity == "closer" and self.distance_nodes == "kl_distance":
                     d = 1/self.calculate_kl_distance(self.stored_models[i], to_send['params'])
                     if self.iteration > 40:
