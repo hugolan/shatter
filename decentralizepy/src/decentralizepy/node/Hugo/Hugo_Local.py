@@ -13,6 +13,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from decentralizepy import utils
+from decentralizepy.datasets.CIFAR10 import LeNet
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.node.Node import Node
@@ -95,12 +96,14 @@ class Hugo_Local(Node):
         #if self.rank == 0:
         #    print(averaging_deque)
         for rank, d in averaging_deque.items():
-            self.stored_models[rank] = averaging_deque[int(rank)][0]['params']
+            if self.distance_similarity == "DAC":
+                self.stored_models[rank] = averaging_deque[int(rank)][0]
+            else:
+                self.stored_models[rank] = averaging_deque[int(rank)][0]['params']
         return
     def update_probability_matrix(self, to_send):
         sum_dist = 0
-        count = 0
-        scale_factor = 10  # Scaling factor to emphasize differences
+        count  = 0
 
         for i in range(len(self.stored_models)):
             if len(self.stored_models[i]) != 0 and i != self.rank:
@@ -111,15 +114,25 @@ class Hugo_Local(Node):
                     sum_dist += d
                 elif self.distance_similarity == "further" and self.distance_nodes == 2:
                     d = np.linalg.norm(self.stored_models[i] - to_send['params'],ord=self.distance_nodes)
-                    if self.iteration > 50:
-                        d = np.exp(-scale_factor * d)
                     self.probability_matrix[i] = d
                     sum_dist += d
-
+                elif self.distance_similarity == "furtherexp" and self.distance_nodes == 2:
+                    d = np.linalg.norm(self.stored_models[i] - to_send['params'],ord=self.distance_nodes)
+                    if self.iteration > 50:
+                        d = np.exp(-self.weighting_factor * d)
+                    self.probability_matrix[i] = d
+                    sum_dist += d
+                elif self.distance_similarity == "DAC":
+                    model = LeNet()
+                    params = self.sharing.deserialized_model(self.stored_models[i])
+                    model.load_state_dict(params)
+                    ta, tl = self.dataset.test(model, self.loss)
+                    self.probability_matrix[i] = 1/tl
+                    sum_dist += 1/tl
                 elif self.distance_similarity == "closer" and self.distance_nodes == "kl_distance":
                     d = 1/self.calculate_kl_distance(self.stored_models[i], to_send['params'])
                     if self.iteration > 40:
-                        d = np.exp(-scale_factor * d)
+                        d = np.exp(-self.weighting_factor * d)
                     self.probability_matrix[i] = d
                     sum_dist += d
                 elif self.distance_similarity == "further" and self.distance_nodes == "kl_distance":
@@ -520,7 +533,7 @@ class Hugo_Local(Node):
         self.distance_nodes = config["PARAMS"]["distance_nodes"]
         self.distance_similarity = config["PARAMS"]["distance_similarity"]
         self.alternate_rounds = config["PARAMS"]["alternate_rounds"]
-
+        self.weighting_factor = config["PARAMS"]["weighting_factor"]
 
     def __init__(
         self,

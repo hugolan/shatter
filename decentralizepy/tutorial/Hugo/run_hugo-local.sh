@@ -1,7 +1,7 @@
 #!/bin/bash
 
 decpy_path=../../eval # Path to eval folder
-graph=fullyConnected_32.edges # Absolute path of the graph file generated using the generate_graph.py script
+graph=fullyConnected_64.edges # Absolute path of the graph file generated using the generate_graph.py script
 run_path=../../eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
 config_file=config_Hugo.ini
 cp $graph $config_file $run_path
@@ -16,7 +16,7 @@ log_level=INFO # DEBUG | INFO | WARN | CRITICAL
 m=0 # machine id corresponding consistent with ip.json
 echo M is $m
 
-procs_per_machine=32 # 16 processes on 1 machine
+procs_per_machine=64 # 16 processes on 1 machine
 echo procs per machine is $procs_per_machine
 
 log_dir=$run_path/$(date '+%Y-%m-%dT%H:%M')/machine$m # in the eval folder

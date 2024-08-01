@@ -19,7 +19,7 @@ from decentralizepy.models.Model import Model
 log_dir = "/home/hugo/shatter/decentralizepy/tutorial/Hugo/plots"
 
 
-def average_attribute(attribute, path, number_of_nodes=16):
+def average_attribute(attribute, path, number_of_nodes):
     values = []
     for node in range(number_of_nodes):
         with open(path + str(node) + '_results.json', 'r') as file:
@@ -40,7 +40,7 @@ def average_attribute(attribute, path, number_of_nodes=16):
 
     return averages
 
-def get_node_accuracies(attribute, path, number_of_nodes=16):
+def get_node_accuracies(attribute, path, number_of_nodes):
     node_accuracies = {}
     for node in range(number_of_nodes):
         with open(path + str(node) + '_results.json', 'r') as file:
@@ -199,13 +199,15 @@ def aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=16)
     #for lr in lrs:
     #    for seed in seeds:
     for folder in os.listdir(path):
-        if  "dirichlet" not in folder or "0.05" not in folder or "dirichlet0.6" not in folder:
+        if  "dirichlet0.5" not in folder or "0.05" not in folder or "furtherexp" not in folder:
             continue
         print(folder)
         if 'nocom' in folder:
-            lr_accuracies[folder.split('_')[-2] + "_" + folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/'))
+            lr_accuracies[folder.split('_')[-2] + "_" + folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/', 32))
+        elif 'el' in folder:
+            lr_accuracies["el_" + folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/machine0/', 32))
         else:
-            lr_accuracies[folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/'))
+            lr_accuracies[folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/', 32))
     '''
     if str(lr) in folder and seed in folder and "V3" in folder and "el" not in folder and "nocom" not in folder:
         lr_accuracies["LR=" + str(lr)].append(average_attribute(attribute, path + folder + '/'))
@@ -236,8 +238,8 @@ def aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=16)
 def plot_accuracy_rounds(paths):
     plt.figure(figsize=(13, 8))
     for path in paths:
-        data = average_attribute("test_acc", path)
-        plt.plot(data.keys(), data.values(), label=improve_label(path))
+        data = average_attribute("test_acc", path, 32)
+        plt.plot(data.keys(), data.values(), label=path)
 
 
     # Customize plot (optional)
@@ -334,7 +336,7 @@ def plot_boxplot_accuracy(path, lrs, attribute, seeds, number_of_nodes=16):
     plt.savefig(log_dir + '/boxplot_accuracy.jpg')
     return
 
-def plot_accuracy_per_node_rounds(paths, number_of_nodes=16):
+def plot_accuracy_per_node_rounds(paths, number_of_nodes):
     nrows, ncols = 8, 2
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(18,10), sharex=True)
     axes = axes.flatten()
@@ -360,7 +362,37 @@ def plot_accuracy_per_node_rounds(paths, number_of_nodes=16):
 
     return
 
-def plot_proportion_of_models_sent_global(path,direction,current_number_of_neighbors,filter="global"):
+def plot_final_average_accuracy_per_node(paths, number_of_nodes):
+    for path in paths:
+        node_accuracies = get_node_accuracies("test_acc", path, number_of_nodes)
+        avg_accuracies = []
+        nodes = []
+
+        for node in range(number_of_nodes):
+            accuracies = list(node_accuracies[node].values())
+            if len(accuracies) >= 5:
+                avg_accuracy = sum(accuracies[-5:]) / 5
+            else:
+                avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0
+            avg_accuracies.append(avg_accuracy)
+            nodes.append(f'Node {node}')
+
+        fig, ax = plt.subplots(figsize=(18, 10))
+        ax.bar(nodes, avg_accuracies)
+        ax.set_ylabel('Average Accuracy')
+        ax.set_xlabel('Nodes')
+        ax.set_xticklabels(nodes, rotation=45)
+        ax.set_title(improve_label(path))
+
+    fig.suptitle(improve_label(path))
+    plt.tight_layout()
+    plt.savefig(log_dir + '/final_accuracy_nodes.jpg')
+
+    return
+
+
+
+def plot_proportion_of_models_sent_global(path, direction, current_number_of_neighbors, filter="global"):
     if direction == "outgoing":
         data = group_neighbors(path, "neighbors", filter, current_number_of_neighbors)
     elif direction == "incoming":
@@ -379,9 +411,14 @@ def plot_proportion_of_models_sent_global(path,direction,current_number_of_neigh
         for neighbor in neighbors:
             counts[neighbor] += 1
 
+        # Plot every 20 iterations during the first 100 iterations
+        if iteration < 100 and (iteration + 1) % 20 == 0:
+            total_counts = sum(counts.values())
+            percentages = {key: (count / total_counts) * 100 for key, count in counts.items()}
+            buckets.append(percentages)
+
         # Check if we've reached a new bucket boundary
-        if (iteration + 1) % bucket_size == 0:
-            # Calculate percentages for the current bucket
+        if iteration >= 100 and (iteration + 1) % bucket_size == 0:
             total_counts = sum(counts.values())
             percentages = {key: (count / total_counts) * 100 for key, count in counts.items()}
             buckets.append(percentages)
@@ -399,6 +436,17 @@ def plot_proportion_of_models_sent_global(path,direction,current_number_of_neigh
     iterations = np.arange(len(buckets)) + 1
     labels = [f"Node {i}" for i in range(num_neighbors)]
     percent_data = np.array([[bucket[i] for bucket in buckets] for i in range(num_neighbors)])
+
+    # Generate x-axis labels based on the iteration ranges
+    iteration_labels = []
+    for i in range(len(buckets)):
+        if i < 5:  # For the first 100 iterations (20 iterations per bucket)
+            start = i * 20 + 1
+            end = (i + 1) * 20
+        else:  # For subsequent iterations (100 iterations per bucket)
+            start = 100 + (i - 5) * 100 + 1
+            end = 100 + (i - 4) * 100
+        iteration_labels.append(f'{start}-{end}')
 
     # Plotting
     plt.figure(figsize=(16, 7))
@@ -426,11 +474,10 @@ def plot_proportion_of_models_sent_global(path,direction,current_number_of_neigh
                     ha='center', va='center', fontsize=8, color='white'
                 )
 
-    plt.title('Percentage of Each Neighbor Over 100 Iteration Buckets for ' + improve_label(path))
-    plt.xlabel('Bucket of 100 Iterations')
+    plt.title('Percentage of Each Neighbor Over Iteration Buckets for ' + improve_label(path))
+    plt.xlabel('Iteration Buckets')
     plt.ylabel('Percentage (%)')
-    plt.xticks(iterations, labels=[f'{i * bucket_size + 1}-{(i + 1) * bucket_size}' for i in range(len(buckets))],
-               rotation=45, ha='right')
+    plt.xticks(iterations, labels=iteration_labels, rotation=45, ha='right')
     plt.legend(loc='upper right', bbox_to_anchor=(1.2, 1))
     plt.tight_layout()
     plt.show()
@@ -776,6 +823,46 @@ def plot_accuracy_corr(path, current_node, total_nodes=16):
     plt.savefig(log_dir + '/correlation.png')
     return
 
+def calculate_mean_std_accuracy(path_o, number_of_nodes):
+    avg_accuracies_all_paths = []
+    chosen_path = []
+
+    for folder in os.listdir(path_o):
+        if "wf=10" in folder and "dirichlet0.1" in folder and "nocom" in folder and "0.05" in folder and "el" not in folder and "furtherexp" in folder:
+            chosen_path.append(folder)
+
+    for path in chosen_path:
+        try:
+            print(path)
+            full_path = path_o + "/" + path + "/"
+            node_accuracies = get_node_accuracies("test_acc", full_path, number_of_nodes)
+        except:
+            continue
+        for node in range(number_of_nodes):
+            accuracies = list(node_accuracies[node].values())
+            if len(accuracies) >= 5:
+                avg_accuracy = sum(accuracies[-5:]) / 5
+            else:
+                avg_accuracy = sum(accuracies) / len(accuracies) if accuracies else 0
+            avg_accuracies_all_paths.append(avg_accuracy)
+
+    mean_accuracy = np.mean(avg_accuracies_all_paths)
+    std_accuracy = np.std(avg_accuracies_all_paths)
+
+    # Plotting the distribution
+    plt.figure(figsize=(10, 6))
+    plt.hist(avg_accuracies_all_paths, bins=20, edgecolor='black', alpha=0.7)
+    plt.axvline(mean_accuracy, color='r', linestyle='dashed', linewidth=1)
+    plt.axvline(mean_accuracy - std_accuracy, color='g', linestyle='dashed', linewidth=1)
+    plt.axvline(mean_accuracy + std_accuracy, color='g', linestyle='dashed', linewidth=1)
+    plt.title('Distribution of Node Accuracies no Communication')
+    plt.xlabel('Average Accuracy')
+    plt.ylabel('Frequency')
+    plt.show()
+    plt.savefig(log_dir + '/node_accuracy_distribution_nocom.png')
+
+    return mean_accuracy, std_accuracy
+
 if __name__ == "__main__":
     seeds = [90,42,123,789,1001,5555,8675309,314159]
     seeds = [str(i) for i in seeds]
@@ -783,12 +870,13 @@ if __name__ == "__main__":
 
     print("start building plots")
     data_path = "/home/hugo/shatter/decentralizepy/eval/data"
+    calculate_mean_std_accuracy(data_path,32)
     #softmax
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/softmax_90_V2_0.025_2_closer_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/softmax_90_V2_0.025_2_further_4_1024_10/", "/home/hugo/shatter/decentralizepy/eval/data/el_4degree_2048_10rounds/machine0/"]
     #32 nodes
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/32_90_V2_0.025_2_closer_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/32_90_V2_0.025_2_further_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/el_5degree_2048_10rounds/machine0/"]
     #benchmark
-    data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/V3_0.1_2_further_10_90/"]
+    #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/V3_0.1_2_further_10_90/"]
     #10K
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/90_V2_0.025_2_closer_4_10020_10/","/home/hugo/shatter/decentralizepy/eval/data/90_V2_0.025_2_further_4_10020_10/",]#"/home/hugo/shatter/decentralizepy/eval/data/el_4degree_10020_10rounds/machine0/"]
     #KL distance
@@ -798,13 +886,17 @@ if __name__ == "__main__":
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/alternate_2_V2_0.025_2_further_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/alternate_2_V2_0.025_2_closer_4_1024_10/"]
     #weight decay
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/weight_decay_V2_0.025_2_further_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/weight_decay_el/machine0/"]
-    plot_accuracy_rounds(data_sources)
-    plot_accuracy_and_deviation("/home/hugo/shatter/decentralizepy/eval/data/", lrs, "test_acc", seeds, number_of_nodes=32)
+    #plot_accuracy_rounds(data_sources)
+    #plot_accuracy_and_deviation("/home/hugo/shatter/decentralizepy/eval/data/", lrs, "test_acc", seeds, number_of_nodes=32)
 
-    data_look_into = "/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_further_10_42/"
+    #data_look_into = "/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_42_dirichlet0.1_nocom_wf=10/"
+    data_look_into = "/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_90_dirichlet0.1_wf=10/"
+    #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_42_dirichlet0.1_nocom_wf=10/","/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_42_dirichlet0.1_wf=10/"]
+    #plot_accuracy_rounds(data_sources)
     neighbors = 32
     node = 1
-    plot_heatmap_probability_matrix(data_look_into)
+    #plot_final_average_accuracy_per_node([data_look_into], 32)
+    #plot_heatmap_probability_matrix(data_look_into)
     plot_proportion_of_models_sent_global(data_look_into, "outgoing", neighbors, node)
     plot_proportion_of_models_sent_global(data_look_into, "incoming", neighbors, node)
     #plot_neighbors_KL(data_look_into, neighbors, node)
@@ -813,6 +905,6 @@ if __name__ == "__main__":
     #plot_boxplot_accuracy("/home/hugo/shatter/decentralizepy/eval/data/", lrs, "test_acc", seeds, number_of_nodes=16)
     #plot_sd_accros_nodes(data_sources)
     #plot_accuracy_per_node_rounds(data_sources)
-    plot_kl_divergence_of_probability_distributions(data_sources)
+    #plot_kl_divergence_of_probability_distributions(data_sources)
     #plot_distance_same_models("/home/hugo/shatter/decentralizepy/eval/data/V2_0.025_2_further_4_1024_10/")
     #plot_distance_inter_models("/home/hugo/shatter/decentralizepy/eval/data/V2_0.025_2_further_4_1024_10/")
