@@ -78,6 +78,7 @@ if __name__ == "__main__":
     except:
         alphas_2 = [my_config['DATASET']['alpha_2']]
 
+
     print(alphas_1)
     print(alphas_2)
     print(learning_rates)
