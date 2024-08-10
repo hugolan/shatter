@@ -132,30 +132,29 @@ class Shakespeare(Dataset):
             self.sizes[-1] += 1.0 - frac * self.num_partitions
             logging.debug("Size fractions: {}".format(self.sizes))
 
-        my_clients = DataPartitioner(files, self.sizes).use(self.dataset_id)
-        my_train_data = {"x": [], "y": []}
-        self.clients = []
-        self.num_samples = []
-        logging.debug("Clients Length: %d", c_len)
-        logging.debug("My_clients_len: %d", my_clients.__len__())
-        for i in range(my_clients.__len__()):
-            cur_file = my_clients.__getitem__(i)
+        if self.partition_niid == "dirichlet":
+            print(None)
+        else:
+            my_clients = DataPartitioner(files, self.sizes).use(self.dataset_id)
+            my_train_data = {"x": [], "y": []}
+            self.clients = []
+            self.num_samples = []
+            for i in range(my_clients.__len__()):
+                cur_file = my_clients.__getitem__(i)
 
-            clients, _, train_data = self.__read_file__(
-                os.path.join(self.train_dir, cur_file)
-            )
-            for cur_client in clients:
-                self.clients.append(cur_client)
-                my_train_data["x"].extend(self.process(train_data[cur_client]["x"]))
-                my_train_data["y"].extend(self.process(train_data[cur_client]["y"]))
-                self.num_samples.append(len(train_data[cur_client]["y"]))
+                clients, _, train_data = self.__read_file__(
+                    os.path.join(self.train_dir, cur_file)
+                )
+                for cur_client in clients:
+                    self.clients.append(cur_client)
+                    my_train_data["x"].extend(self.process(train_data[cur_client]["x"]))
+                    my_train_data["y"].extend(self.process(train_data[cur_client]["y"]))
+                    self.num_samples.append(len(train_data[cur_client]["y"]))
         # turns the list of lists into a single list
         self.train_y = np.array(my_train_data["y"], dtype=np.dtype("int64")).reshape(-1)
         self.train_x = np.array(
             my_train_data["x"], dtype=np.dtype("int64")
         )  # .reshape(-1)
-        logging.info("train_x.shape: %s", str(self.train_x.shape))
-        logging.info("train_y.shape: %s", str(self.train_y.shape))
         assert self.train_x.shape[0] == self.train_y.shape[0]
         assert self.train_x.shape[0] > 0
 
@@ -164,7 +163,6 @@ class Shakespeare(Dataset):
         Loads the testing set.
 
         """
-        logging.info("Loading testing set.")
         _, _, d = self.__read_dir__(self.test_dir)
         test_x = []
         test_y = []

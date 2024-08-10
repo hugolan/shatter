@@ -25,32 +25,6 @@ class HugoClusters_Local(Node):
 
     """
 
-    def softmax(self, x):
-        """Compute softmax values for each sets of scores in x."""
-        e_x = np.exp(x - np.max(x))
-        return e_x / e_x.sum(axis=0)
-
-    def calculate_kl_distance(self, P, Q):
-        epsilon = 1e-8
-        min_positive = 1e-10
-
-        shift_value = np.abs(min(np.min(Q),np.min(P))) + epsilon
-        P = P + shift_value
-        Q = Q + shift_value
-
-        #clip
-        P = np.clip(P, min_positive, None)
-        Q = np.clip(Q, min_positive, None)
-
-
-        # Normalize to ensure they sum to 1
-        P = P / np.sum(P)
-        Q = Q / np.sum(Q)
-
-        # Calculate KL divergence using scipy.stats.entropy
-        distance = entropy(P, Q)
-        return distance
-
     def save_plot(self, l, label, title, xlabel, filename):
         """
         Save Matplotlib plot. Clears previous plots.
@@ -85,9 +59,9 @@ class HugoClusters_Local(Node):
         #        new_neigh.add(index)
         #return list(new_neigh)
 
+        if (self.iteration % 3) == 0 and self.iteration != 0:
 
-        if (self.iteration % 3) == 0:
-            return list(self.rng.sample(self.outer_neighbours, self.degree))
+            return self.outer_neighbours
         else:
             l = list(np.random.choice(self.list_neighbours, size=self.degree, replace=False, p=self.probability_matrix))
             l = [int(i) for i in l]
@@ -101,41 +75,41 @@ class HugoClusters_Local(Node):
                 self.stored_models[rank] = averaging_deque[int(rank)][0]['params']
         return
     def update_probability_matrix(self, to_send):
-        sum_dist = 0
-        count = 0
-        scale_factor = 10  # Scaling factor to emphasize differences
+        if (self.iteration % 3) == 0 and self.iteration != 0:
 
-        for i in range(len(self.stored_models)):
-            if len(self.stored_models[i]) != 0 and i in self.inner_neighbours:
-                count += 1
-                if self.distance_similarity == "closer" and self.distance_nodes == 2:
-                    d = 1 / np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
-                    self.probability_matrix[i] = d
-                    sum_dist += d
-                elif self.distance_similarity == "further" and self.distance_nodes == 2:
-                    d = np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
-                    self.probability_matrix[i] = d
-                    sum_dist += d
-                elif self.distance_similarity == "furtherexp" and self.distance_nodes == 2:
-                    d = np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
-                    if self.iteration > 3:
-                        d = np.exp(-self.weighting_factor * d)
-                    self.probability_matrix[i] = d
-                    sum_dist += d
-                else:
-                    print("wrong_distance")
+            return
+        else:
+            sum_dist = 0
+            count = 0
+            scale_factor = 10  # Scaling factor to emphasize differences
 
-
-        for i in range(len(self.stored_models)):
-            if len(self.stored_models[i]) == 0 and i in self.inner_neighbours and count != 0:
-                self.probability_matrix[i] = sum_dist/count
-
-        sum_weights = np.sum(self.probability_matrix)
-        for i in range(len(self.probability_matrix)):
-            self.probability_matrix[i] = self.probability_matrix[i]/sum_weights
+            for i in range(len(self.stored_models)):
+                if len(self.stored_models[i]) != 0 and i in self.inner_neighbours:
+                    count += 1
+                    if self.distance_similarity == "closer" and self.distance_nodes == 2:
+                        d = 1/np.linalg.norm(self.stored_models[i] - to_send['params'], ord=self.distance_nodes)
+                        self.probability_matrix[i] = d
+                        sum_dist += d
+                    elif self.distance_similarity == "further" and self.distance_nodes == 2:
+                        d = np.linalg.norm(self.stored_models[i] - to_send['params'],ord=self.distance_nodes)
+                        #if self.iteration > 50:
+                        #    d = np.exp(-scale_factor * d)
+                        self.probability_matrix[i] = d
+                        sum_dist += d
+                    else:
+                        print("wrong_distance")
 
 
-        return
+            for i in range(len(self.stored_models)):
+                if len(self.stored_models[i]) == 0 and i in self.inner_neighbours and count != 0:
+                    self.probability_matrix[i] = sum_dist/count
+
+            sum_weights = np.sum(self.probability_matrix)
+            for i in range(len(self.probability_matrix)):
+                self.probability_matrix[i] = self.probability_matrix[i]/sum_weights
+
+
+            return
 
 
     def receive_DPSGD(self):
@@ -192,9 +166,10 @@ class HugoClusters_Local(Node):
             self.iteration = iteration
             self.trainer.train(self.dataset)
 
-            neighbors_this_round = self.get_neighbors()
             to_send = self.sharing.get_data_to_send()
+            neighbors_this_round = self.get_neighbors()
             to_send["CHANNEL"] = "DPSGD"
+            to_send["avg_model"] = "DPSGD"
 
             # Communication Phase
             for neighbor in neighbors_this_round:
@@ -517,7 +492,6 @@ class HugoClusters_Local(Node):
         self.distance_nodes = config["PARAMS"]["distance_nodes"]
         self.distance_similarity = config["PARAMS"]["distance_similarity"]
         self.alternate_rounds = config["PARAMS"]["alternate_rounds"]
-        self.weighting_factor = config["PARAMS"]["weighting_factor"]
 
 
     def __init__(

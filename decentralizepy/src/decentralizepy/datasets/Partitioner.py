@@ -296,7 +296,7 @@ class DirichletClustersDataPartitioner(DataPartitioner):
     Modified from https://gitlab.epfl.ch/sacs/collaborative-inference/-/blob/main/src/decentralizepy/datasets/Partitioner.py#L207
     """
 
-    def __init__(self, data, sizes=[1.0], seed=1234, alpha=0.1, num_classes=10, clusters=4):
+    def __init__(self, data, sizes=[1.0], seed=1234, alpha_1=0.1, alpha_2=0.1, num_classes=10, clusters=4):
         """
         Constructor. Partitions the data according the parameters
 
@@ -317,23 +317,22 @@ class DirichletClustersDataPartitioner(DataPartitioner):
         self.data = data
         self.seed = seed
         self.num_classes = num_classes
-        self.alpha = alpha
+        self.alpha_1 = alpha_1
+        self.alpha_2 = alpha_2
         self.partitions = [[] for _ in range(len(sizes))]
         targets = np.array([target for _, target in data])
         cluster_partitions, _ = self.__getDirichletData__(
-            targets, clusters, seed, self.alpha, num_classes
+            targets, clusters, seed, self.alpha_1, num_classes
         )
-        print(cluster_partitions)
-        cluster_size = len(sizes)/clusters
+        cluster_size = int(len(sizes)/clusters)
         for cluster in range(clusters):
-            cluster_data = cluster_partitions[cluster]
+            cluster_data = Partition(self.data, cluster_partitions[cluster]).data
             cluster_targets = np.array([target for _, target in cluster_data])
             partitions_individuals, _ = self.__getDirichletData__(
-                cluster_targets, cluster_size, seed, self.alpha, num_classes
+                cluster_targets, cluster_size, seed, self.alpha_2, num_classes
             )
-            print(partitions_individuals)
             for i in range(cluster_size):
-                print()
+                #node_data = Partition(self.data, partitions_individuals[i]).data
                 self.partitions[i+cluster*cluster_size] = partitions_individuals[i]
 
 

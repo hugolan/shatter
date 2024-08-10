@@ -16,7 +16,7 @@ from scipy.stats import pearsonr, spearmanr
 from decentralizepy.datasets.CIFAR10 import LeNet
 from decentralizepy.models.Model import Model
 
-log_dir = "/home/hugo/shatter/decentralizepy/tutorial/Hugo/plots"
+log_dir = "/home/hugo/shatter/decentralizepy/tutorial/Hugo_clusters/plots"
 
 
 def average_attribute(attribute, path, number_of_nodes=16):
@@ -196,6 +196,8 @@ def build_probability_matrix(path, iteration, number_of_nodes=16):
 def aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=16):
     lr_accuracies = defaultdict(list)
 
+<<<<<<< HEAD:decentralizepy/tutorial/Hugo_clusters/plot_graphs.py
+=======
     for lr in lrs:
         for seed in seeds:
             for folder in os.listdir(path):
@@ -207,7 +209,17 @@ def aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=16)
                     lr_accuracies["EL_LR=" + str(lr)].append(average_attribute(attribute, path + folder + '/machine0/'))
                 if str(lr) in folder and seed in folder and "V3" in folder and "el" not in folder and "nocom" in folder:
                     lr_accuracies["nocom_LR=" + str(lr)].append(average_attribute(attribute, path + folder + '/'))
+>>>>>>> 5b3ab278ecc59872a49958471c04cc531c31774b:decentralizepy/tutorial/Hugo_cluster/plot_graphs.py
 
+    for folder in os.listdir(path):
+
+        if "clusters" not in folder or "dirichlet0.7"  in folder:
+            continue
+        print(folder)
+        #if str(lr) in folder and seed in folder and "V3" in folder and "el" not in folder and "nocom" not in folder:
+        lr_accuracies[folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/'))
+
+    print(lr_accuracies.keys())
     aggregated = {}
     for main_key, list_of_dicts in lr_accuracies.items():
         # Initialize an empty dictionary for the current main key
