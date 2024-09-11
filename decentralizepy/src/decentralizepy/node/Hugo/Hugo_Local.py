@@ -367,6 +367,12 @@ class Hugo_Local(Node):
             ) as of:
                 json.dump(results_dict, of)
 
+            if (self.iteration % self.decayiteration) == 0 and self.iteration != 0:
+                self.weighting_factor = self.weighting_factor * self.decaylr
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] *= self.decaylr
+
+
         self.disconnect_neighbors()
         logging.info("Storing final weight")
         self.model.dump_weights(self.weights_store_dir, self.uid, iteration)
@@ -534,6 +540,9 @@ class Hugo_Local(Node):
         self.distance_similarity = config["PARAMS"]["distance_similarity"]
         self.alternate_rounds = config["PARAMS"]["alternate_rounds"]
         self.weighting_factor = config["PARAMS"]["weighting_factor"]
+        self.decaylr = config["PARAMS"]["decaylr"]
+        self.decayiteration = config["PARAMS"]["decayiteration"]
+
 
     def __init__(
         self,

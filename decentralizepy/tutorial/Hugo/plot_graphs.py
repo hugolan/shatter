@@ -193,29 +193,62 @@ def build_probability_matrix(path, iteration, number_of_nodes=16):
 
     return matrix
 
+def add_underscore(folder):
+    if "wf" in folder:
+        # Find the position of "wf"
+        wf_index = folder.find("wf")
+
+        # Check if there is an underscore before "wf"
+        if wf_index > 0 and folder[wf_index - 1] != '_':
+            # Insert an underscore before "wf"
+            folder = folder[:wf_index] + '_' + folder[wf_index:]
+    return folder
+
+
 def aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=16):
     lr_accuracies = defaultdict(list)
 
     #for lr in lrs:
     #    for seed in seeds:
     for folder in os.listdir(path):
-        if  "dirichlet0.5" not in folder or "0.05" not in folder or "furtherexp" not in folder:
+
+
+
+
+
+        if  "0.05" not in folder or "decaylr=0.9" not in folder or "dirichlet0.5" not in folder or "wf=-5" not in folder: #-10, 8, 5, -5, , 10
             continue
-        print(folder)
+
+        if "iterationdecay" in folder:
+            print(folder)
+            lr_accuracies["_".join(folder.split("_")[6:])].append(average_attribute(attribute, path + folder + '/', 32))
+
+        '''
+        if "DAC" in folder:
+            lr_accuracies["DAC_" + folder.split("_")[-1]].append(average_attribute(attribute, path + folder + '/', 32))
+        if "nocom" not in folder and "wf=10" in folder and "furtherexp" in folder and "iterationdecay" not in folder:
+            print(folder)
+            lr_accuracies["Hugo_" + add_underscore(folder).split("_")[-2]].append(average_attribute(attribute, path + folder + '/', 32))
+        '''
+        '''
+        if 'closer' in folder:
+            lr_accuracies["closer"].append(average_attribute(attribute, path + folder + '/', 32))
+        if 'further' in folder and "furtherexp" not in folder:
+            lr_accuracies["further"].append(average_attribute(attribute, path + folder + '/', 32))
+        if "furtherexp" in folder and "nocom" not in folder and "wf=10" in folder:
+            print(folder)
+            lr_accuracies["furtherexp"].append(average_attribute(attribute, path + folder + '/', 32))
+        '''
+
+        '''
         if 'nocom' in folder:
             lr_accuracies[folder.split('_')[-2] + "_" + folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/', 32))
         elif 'el' in folder:
             lr_accuracies["el_" + folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/machine0/', 32))
         else:
             lr_accuracies[folder.split('_')[-1]].append(average_attribute(attribute, path + folder + '/', 32))
-    '''
-    if str(lr) in folder and seed in folder and "V3" in folder and "el" not in folder and "nocom" not in folder:
-        lr_accuracies["LR=" + str(lr)].append(average_attribute(attribute, path + folder + '/'))
-    if str(lr) in folder and seed in folder and "V3" in folder and "el" in folder and "nocom" not in folder:
-        lr_accuracies["EL_LR=" + str(lr)].append(average_attribute(attribute, path + folder + '/machine0/'))
-    if str(lr) in folder and seed in folder and "V3" in folder and "el" not in folder and "nocom" in folder:
-        lr_accuracies["nocom_LR=" + str(lr)].append(average_attribute(attribute, path + folder + '/'))
-    '''
+        '''
+
     aggregated = {}
     for main_key, list_of_dicts in lr_accuracies.items():
         # Initialize an empty dictionary for the current main key
@@ -258,12 +291,16 @@ def plot_accuracy_rounds(paths):
 
     return
 
+
 def plot_accuracy_and_deviation(path, lrs, attribute, seeds, number_of_nodes):
     data = aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=number_of_nodes)
     # Plotting the mean accuracies with standard deviation shaded area for each learning rate
     plt.figure(figsize=(12, 8))
 
-    for lr, iterations_data in data.items():
+    markers = ['o', 's', 'D', '^', 'v', 'P', '*', 'X']  # Different marker styles
+    colors = plt.cm.get_cmap('tab10', min(len(lrs), 10))  # Use a colormap with up to 10 distinct colors
+
+    for idx, (lr, iterations_data) in enumerate(data.items()):
         iterations = sorted(iterations_data.keys(), key=int)
         mean_accuracies = []
         min_accuracies = []
@@ -281,9 +318,13 @@ def plot_accuracy_and_deviation(path, lrs, attribute, seeds, number_of_nodes):
         min_accuracies = np.array(min_accuracies)
         max_accuracies = np.array(max_accuracies)
 
-        # Plotting for each learning rate
-        plt.plot(iterations, mean_accuracies, label=f'{lr}', linestyle='-', marker='o')
-        plt.fill_between(iterations, min_accuracies, max_accuracies, alpha=0.2)
+        # Cycle through colors and markers if there are more lrs than colors
+        color = colors(idx % colors.N)  # Cycle through available colors
+        marker = markers[idx % len(markers)]  # Cycle through available markers
+
+        # Plotting for each learning rate with different colors and markers
+        plt.plot(iterations, mean_accuracies, label=f'{lr}', linestyle='-', marker=marker, color=color)
+        plt.fill_between(iterations, min_accuracies, max_accuracies, alpha=0.2, color=color)
 
 
     xticks = [key for key in iterations if int(key) % 100 == 0]
@@ -292,10 +333,16 @@ def plot_accuracy_and_deviation(path, lrs, attribute, seeds, number_of_nodes):
     plt.ylabel('Test Accuracy')
     plt.title('Test accuracy over rounds for different learning rates, shaded area covering max and min accuracy for 10 runs on each LR')
     plt.grid()
-    plt.legend()
+
+    # Modified this line to move the legend outside the plot
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=12, markerscale=1.5)  # Increased the legend font size and marker scale
+
+    plt.tight_layout()  # Ensure everything fits within the figure area
     plt.show()
-    plt.savefig(log_dir + '/deviation_accuracy.jpg')
+    plt.savefig(log_dir + '/deviation_accuracy.jpg', bbox_inches='tight')  # Ensure the legend is included in the saved image
     return
+
+
 
 def plot_boxplot_accuracy(path, lrs, attribute, seeds, number_of_nodes=16):
     learning_rates  = aggregagte_attribute_per_lr(path, lrs, attribute, seeds, number_of_nodes=16)
@@ -869,8 +916,8 @@ if __name__ == "__main__":
     lrs = [0.0125,0.025,0.05,0.1]
 
     print("start building plots")
-    data_path = "/home/hugo/shatter/decentralizepy/eval/data"
-    calculate_mean_std_accuracy(data_path,32)
+    data_path = "/home/hugo/shatter/decentralizepy/eval/data/CIFAR10/"
+    #calculate_mean_std_accuracy(data_path,32)
     #softmax
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/softmax_90_V2_0.025_2_closer_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/softmax_90_V2_0.025_2_further_4_1024_10/", "/home/hugo/shatter/decentralizepy/eval/data/el_4degree_2048_10rounds/machine0/"]
     #32 nodes
@@ -887,18 +934,20 @@ if __name__ == "__main__":
     #weight decay
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/weight_decay_V2_0.025_2_further_4_1024_10/","/home/hugo/shatter/decentralizepy/eval/data/weight_decay_el/machine0/"]
     #plot_accuracy_rounds(data_sources)
-    #plot_accuracy_and_deviation("/home/hugo/shatter/decentralizepy/eval/data/", lrs, "test_acc", seeds, number_of_nodes=32)
+    plot_accuracy_and_deviation(data_path, lrs, "test_acc", seeds, number_of_nodes=32)
 
     #data_look_into = "/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_42_dirichlet0.1_nocom_wf=10/"
-    data_look_into = "/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_90_dirichlet0.1_wf=10/"
+    data_look_into = "/home/hugo/shatter/decentralizepy/eval/data/CIFAR10/V3_0.05_2_furtherexp_10_90_dirichlet0.1_wf=10/"
     #data_sources = ["/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_42_dirichlet0.1_nocom_wf=10/","/home/hugo/shatter/decentralizepy/eval/data/V3_0.05_2_furtherexp_10_42_dirichlet0.1_wf=10/"]
     #plot_accuracy_rounds(data_sources)
     neighbors = 32
     node = 1
     #plot_final_average_accuracy_per_node([data_look_into], 32)
     #plot_heatmap_probability_matrix(data_look_into)
-    plot_proportion_of_models_sent_global(data_look_into, "outgoing", neighbors, node)
-    plot_proportion_of_models_sent_global(data_look_into, "incoming", neighbors, node)
+    #plot_proportion_of_models_sent_global(data_look_into, "outgoing", neighbors, node)
+    #plot_proportion_of_models_sent_global(data_look_into, "incoming", neighbors, node)
+    #plot_proportion_of_models_sent_global(data_look_into, "outgoing", neighbors, "global")
+
     #plot_neighbors_KL(data_look_into, neighbors, node)
     #plot_accuracy_corr(data_look_into, node)
     #plot_accuracy_and_deviation("/home/hugo/shatter/decentralizepy/eval/data/", lrs, "test_acc", seeds, number_of_nodes=16)

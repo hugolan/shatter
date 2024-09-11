@@ -314,6 +314,8 @@ class DirichletClustersDataPartitioner(DataPartitioner):
             Degree of heterogeneity. Lower is more heterogeneous.
         """
 
+
+        """
         self.data = data
         self.seed = seed
         self.num_classes = num_classes
@@ -334,6 +336,28 @@ class DirichletClustersDataPartitioner(DataPartitioner):
             for i in range(cluster_size):
                 #node_data = Partition(self.data, partitions_individuals[i]).data
                 self.partitions[i+cluster*cluster_size] = partitions_individuals[i]
+        """
+        self.data = data
+        self.seed = seed
+        self.num_classes = num_classes
+        self.alpha_1 = alpha_1
+        self.alpha_2 = alpha_2
+        self.size_cluster = int(len(sizes)/clusters)
+        self.partitions = []
+        targets = np.array([target for _, target in data])
+        partitions, ratio = self.__getDirichletData__(
+            targets, clusters, seed, self.alpha_1, num_classes
+        )
+        for i in range(clusters):
+            sub_data = [data[j] for j in partitions[i]]
+            sub_targets = np.array([target for _, target in sub_data])
+
+            sub_partitions, sub_ratio = self.__getDirichletData__(
+                sub_targets, self.size_cluster, seed, self.alpha_2, len(set(sub_targets))
+            )
+            for k in range(self.size_cluster):
+                self.partitions.append([partitions[i][z] for z in sub_partitions[k]])
+
 
 
 

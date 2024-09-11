@@ -30,26 +30,7 @@ class HugoClusters_Local(Node):
         e_x = np.exp(x - np.max(x))
         return e_x / e_x.sum(axis=0)
 
-    def calculate_kl_distance(self, P, Q):
-        epsilon = 1e-8
-        min_positive = 1e-10
 
-        shift_value = np.abs(min(np.min(Q),np.min(P))) + epsilon
-        P = P + shift_value
-        Q = Q + shift_value
-
-        #clip
-        P = np.clip(P, min_positive, None)
-        Q = np.clip(Q, min_positive, None)
-
-
-        # Normalize to ensure they sum to 1
-        P = P / np.sum(P)
-        Q = Q / np.sum(Q)
-
-        # Calculate KL divergence using scipy.stats.entropy
-        distance = entropy(P, Q)
-        return distance
 
     def save_plot(self, l, label, title, xlabel, filename):
         """

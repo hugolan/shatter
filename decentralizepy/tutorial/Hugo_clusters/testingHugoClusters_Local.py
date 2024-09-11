@@ -41,7 +41,7 @@ if __name__ == "__main__":
         "CRITICAL": logging.CRITICAL,
     }
 
-    config = read_ini(args.config_file)
+    config = read_ini("/home/hugo/shatter/decentralizepy/tutorial/Hugo_clusters/config_HugoClusters.ini")
     my_config = dict()
     for section in config:
         my_config[section] = dict(config.items(section))
@@ -78,6 +78,7 @@ if __name__ == "__main__":
     except:
         alphas_2 = [my_config['DATASET']['alpha_2']]
 
+    my_config['PARAMS']["weighting_factor"] = -10
 
     print(alphas_1)
     print(alphas_2)
@@ -99,7 +100,7 @@ if __name__ == "__main__":
                         for seed in seeds:
                             seed = int(seed)
                             #alternate log_dir = '/home/hugo/shatter/decentralizepy/eval/data/alternate_'+ str(alternate_rounds) + '_V2_' + str(lr) + "_" + str(distance_nodes) + "_" + str(distance_similarity) + "_4_1024_" + str(my_config['TRAIN_PARAMS']['rounds'])
-                            log_dir = '/home/hugo/shatter/decentralizepy/eval/data/clusters_V3_' + str(lr) + "_" + str(distance_similarity) + "_" + str(my_config['TRAIN_PARAMS']['rounds']) + "_" + str(seed) + "_dirichlet1=" + str(alpha_1) + "_dirichlet2=" + str(alpha_2) + "_nodes=" + str(my_config['NODE']['graph_degree']) + "_degree=" + str( my_config['NODE']['graph_degree'])
+                            log_dir = '/home/hugo/shatter/decentralizepy/eval/data/clusters_V3_' + str(lr) + "_" + str(distance_similarity) + "_" + str(my_config['TRAIN_PARAMS']['rounds']) + "_" + str(seed) + "_dirichlet1=" + str(alpha_1) + "_dirichlet2=" + str(alpha_2) + "_nodes=" + str(my_config['NODE']['graph_degree']) + "_degree=" + str( my_config['NODE']['graph_degree']) + "_wf=-10"
                             if int(my_config['NODE']['graph_degree']) == 0:
                                 log_dir += '_nocom'
                             args.log_dir = log_dir

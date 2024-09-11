@@ -78,7 +78,8 @@ if __name__ == "__main__":
         alphas = [my_config['DATASET']['alpha']]
 
 
-    #weighting_factors.append('-5')
+    weighting_factors.append('-5')
+    weighting_factors.append('-10')
     print(alphas)
     print(learning_rates)
     print(distance_similarity_array)
@@ -99,71 +100,76 @@ if __name__ == "__main__":
                         count = 0
                         for weighting_factor in weighting_factors:
                             weighting_factor = int(weighting_factor)
-                            if distance_similarity != "furtherexp" and count == 1:
-                                continue
-                            count = 1
-                            #alternate log_dir = '/home/hugo/shatter/decentralizepy/eval/data/alternate_'+ str(alternate_rounds) + '_V2_' + str(lr) + "_" + str(distance_nodes) + "_" + str(distance_similarity) + "_4_1024_" + str(my_config['TRAIN_PARAMS']['rounds'])
-                            log_dir = '/home/hugo/shatter/decentralizepy/eval/data/' + str(my_config['DATASET']['dataset_class']) +'/_V3_' + str(lr) + "_" + str(distance_nodes) + "_" + str(distance_similarity) + "_" + str(my_config['TRAIN_PARAMS']['rounds']) + "_" + str(seed) + "_dirichlet" + str(alpha) #+ '_nodes=' + str(my_config['NODE']['graph_degree'])
+                            for decaylr in [0.5,.75,0.9]:
+                                for decayiteration in [100,200,250,300,400]:
+                                    if distance_similarity != "furtherexp" and count == 1:
+                                        continue
+                                    count = 1
+                                    #alternate log_dir = '/home/hugo/shatter/decentralizepy/eval/data/alternate_'+ str(alternate_rounds) + '_V2_' + str(lr) + "_" + str(distance_nodes) + "_" + str(distance_similarity) + "_4_1024_" + str(my_config['TRAIN_PARAMS']['rounds'])
+                                    log_dir = '/home/hugo/shatter/decentralizepy/eval/data/' + str(my_config['DATASET']['dataset_class']) +'/V3_' + str(lr) + "_" + str(distance_nodes) + "_" + str(distance_similarity) + "_" + str(my_config['TRAIN_PARAMS']['rounds']) + "_" + str(seed) + "_dirichlet" + str(alpha) + "_decaylr=" + str(decaylr) + "_iterationdecay=" + str(decayiteration) #+ '_nodes=' + str(my_config['NODE']['graph_degree'])
 
-                            if int(my_config['NODE']['graph_degree']) == 0:
-                                log_dir += '_nocom'
-                            if distance_similarity == "furtherexp":
-                                log_dir += 'wf=' + str(weighting_factor)
-                            args.log_dir = log_dir
-                            Path(args.log_dir).mkdir(parents=True, exist_ok=True)
+                                    if int(my_config['NODE']['graph_degree']) == 0:
+                                        log_dir += '_nocom'
+                                    if distance_similarity == "furtherexp":
+                                        log_dir += 'wf=' + str(weighting_factor)
+                                    args.log_dir = log_dir
+                                    Path(args.log_dir).mkdir(parents=True, exist_ok=True)
 
-                            #copy(args.config_file, args.log_dir)
-                            #copy(args.graph_file, args.log_dir)
-                            utils.write_args(args, args.log_dir)
+                                    #copy(args.config_file, args.log_dir)
+                                    #copy(args.graph_file, args.log_dir)
+                                    utils.write_args(args, args.log_dir)
 
-                            g = Graph()
-                            g.read_graph_from_file(args.graph_file, args.graph_type)
-                            n_machines = args.machines
-                            procs_per_machine = args.procs_per_machine[0]
+                                    g = Graph()
+                                    g.read_graph_from_file(args.graph_file, args.graph_type)
+                                    n_machines = args.machines
+                                    procs_per_machine = args.procs_per_machine[0]
 
-                            l = Linear(n_machines, procs_per_machine)
-                            m_id = args.machine_id
-                            processes = []
+                                    l = Linear(n_machines, procs_per_machine)
+                                    m_id = args.machine_id
+                                    processes = []
 
-                            current_my_config = my_config.copy()
-                            current_my_config['DATASET']['random_seed'] = seed
-                            current_my_config['OPTIMIZER_PARAMS']['lr'] = lr
-                            current_my_config['PARAMS']['el_start'] = el_start
-                            current_my_config['PARAMS']['distance_nodes'] = distance_nodes
-                            current_my_config['PARAMS']['distance_similarity'] = distance_similarity
-                            #current_my_config['PARAMS']['alternate_rounds'] = alternate_rounds
-                            current_my_config['DATASET']['alpha'] = alpha
-                            current_my_config['NODE']['graph_degree'] = my_config['NODE']['graph_degree']
-                            current_my_config['PARAMS']["weighting_factor"] = weighting_factor
-
-                            for r in range(procs_per_machine):
-                                processes.append(
-                                    mp.Process(
-                                        target=Hugo_Local,
-                                        args=[
-                                            r,
-                                            m_id,
-                                            l,
-                                            g,
-                                            current_my_config,
-                                            args.iterations,
-                                            args.log_dir,
-                                            args.weights_store_dir,
-                                            log_level[args.log_level],
-                                            args.test_after,
-                                            args.train_evaluate_after,
-                                            args.reset_optimizer,
-                                        ],
-                                    )
-                                )
+                                    current_my_config = my_config.copy()
+                                    current_my_config['DATASET']['random_seed'] = seed
+                                    current_my_config['OPTIMIZER_PARAMS']['lr'] = lr
+                                    current_my_config['PARAMS']['el_start'] = el_start
+                                    current_my_config['PARAMS']['distance_nodes'] = distance_nodes
+                                    current_my_config['PARAMS']['distance_similarity'] = distance_similarity
+                                    #current_my_config['PARAMS']['alternate_rounds'] = alternate_rounds
+                                    current_my_config['DATASET']['alpha'] = alpha
+                                    current_my_config['NODE']['graph_degree'] = my_config['NODE']['graph_degree']
+                                    current_my_config['PARAMS']["weighting_factor"] = weighting_factor
+                                    current_my_config['PARAMS']["decaylr"] = decaylr
+                                    current_my_config['PARAMS']["decayiteration"] = decayiteration
 
 
+                                    for r in range(procs_per_machine):
+                                        processes.append(
+                                            mp.Process(
+                                                target=Hugo_Local,
+                                                args=[
+                                                    r,
+                                                    m_id,
+                                                    l,
+                                                    g,
+                                                    current_my_config,
+                                                    args.iterations,
+                                                    args.log_dir,
+                                                    args.weights_store_dir,
+                                                    log_level[args.log_level],
+                                                    args.test_after,
+                                                    args.train_evaluate_after,
+                                                    args.reset_optimizer,
+                                                ],
+                                            )
+                                        )
 
-                            for p in processes:
-                                p.start()
 
-                            for p in processes:
-                                p.join()
+
+                                    for p in processes:
+                                        p.start()
+
+                                    for p in processes:
+                                        p.join()
 
 
     print("end")
